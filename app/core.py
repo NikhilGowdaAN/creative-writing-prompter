@@ -211,10 +211,112 @@ def milestone_1(
     return corpus
 
 
+class NGramModel:
+    """N-gram language model supporting frequency counting, MLE, and smoothing."""
+
+    def __init__(self, n: int = 2):
+        if n < 1:
+            raise ValueError("N-gram order n must be at least 1.")
+        self.n: int = n
+        self.ngram_counts: dict[tuple[str, ...], Counter[str]] = defaultdict(Counter)
+        self.context_counts: Counter[tuple[str, ...]] = Counter()
+        self.unigram_counts: Counter[str] = Counter()
+        self.vocabulary: set[str] = set()
+        self.total_tokens: int = 0
+
+    def _normalize_context(self, context: tuple[str, ...] | list[str] | str | None) -> tuple[str, ...]:
+        """Normalize input context to a tuple of length (n - 1)."""
+        if context is None:
+            return ()
+        if isinstance(context, str):
+            ctx_tokens = tokenize(context, lowercase=True, strip_punct=True)
+        else:
+            ctx_tokens = [t.lower() for t in context]
+
+        needed_len = self.n - 1
+        if len(ctx_tokens) > needed_len:
+            ctx_tokens = ctx_tokens[-needed_len:] if needed_len > 0 else []
+        elif len(ctx_tokens) < needed_len:
+            # Keep as-is (e.g. for shorter prompts)
+            pass
+
+        return tuple(ctx_tokens)
+
+    def train(self, tokens: Sequence[str]) -> "NGramModel":
+        """Train the model on a sequence of tokens."""
+        token_list = [t.lower() for t in tokens]
+        self.vocabulary.update(token_list)
+        self.total_tokens += len(token_list)
+
+        for tok in token_list:
+            self.unigram_counts[tok] += 1
+
+        context_len = self.n - 1
+        if context_len == 0:
+            # Unigram model: context is empty tuple ()
+            for tok in token_list:
+                self.ngram_counts[()][tok] += 1
+                self.context_counts[()] += 1
+        else:
+            for i in range(len(token_list) - context_len):
+                ctx = tuple(token_list[i : i + context_len])
+                next_word = token_list[i + context_len]
+                self.ngram_counts[ctx][next_word] += 1
+                self.context_counts[ctx] += 1
+
+        return self
+
+    def count(self, context: tuple[str, ...] | list[str] | str, word: str) -> int:
+        """Return the raw count of word occurring after context."""
+        ctx = self._normalize_context(context)
+        return self.ngram_counts[ctx][word.lower()]
+
+    def context_count(self, context: tuple[str, ...] | list[str] | str) -> int:
+        """Return the total occurrences of context."""
+        ctx = self._normalize_context(context)
+        return self.context_counts[ctx]
+
+    def mle_prob(self, context: tuple[str, ...] | list[str] | str, word: str) -> float:
+        """Calculate Maximum Likelihood Estimation (MLE) probability P(word | context)."""
+        ctx = self._normalize_context(context)
+        denom = self.context_counts[ctx]
+        if denom == 0:
+            return 0.0
+        return self.ngram_counts[ctx][word.lower()] / denom
+
+    def mle_candidates(self, context: tuple[str, ...] | list[str] | str) -> list[tuple[str, float]]:
+        """Return list of (word, mle_probability) for all words observed after context."""
+        ctx = self._normalize_context(context)
+        denom = self.context_counts[ctx]
+        if denom == 0:
+            return []
+        items = [
+            (word, count / denom)
+            for word, count in self.ngram_counts[ctx].items()
+        ]
+        items.sort(key=lambda x: (-x[1], x[0]))
+        return items
+
+
 # --- Milestone 2: Implement n-gram counting and maximum-likelihood probabilities.
 # Hint: Apply n-gram frequency counting and maximum-likelihood probability calculation.
-def milestone_2():  # TODO(milestone 2)
-    raise NotImplementedError("TODO(milestone 2)")
+def milestone_2(
+    tokens: Sequence[str] | None = None,
+    n: int = 2,
+    genre: str | None = None,
+) -> NGramModel:
+    """Milestone 2: Implement n-gram counting and maximum-likelihood probabilities.
+
+    Trains an NGramModel of order n on the corpus tokens, computing frequency
+    counts and maximum-likelihood probabilities.
+    """
+    if tokens is None:
+        corpus = milestone_1(genre=genre)
+        tokens = corpus.tokens
+
+    model = NGramModel(n=n)
+    model.train(tokens)
+    return model
 
 
 # --- Milestone 3: Add add-k smoothing to handle unseen n-grams.
