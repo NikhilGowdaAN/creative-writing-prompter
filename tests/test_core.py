@@ -94,9 +94,55 @@ def test_milestone_2():
 
 
 # Milestone 3: Add add-k smoothing to handle unseen n-grams.
-@pytest.mark.skip(reason="remove this line when you start milestone 3")
 def test_milestone_3():
-    raise NotImplementedError("write the test for milestone 3")
+    # Setup a small deterministic model:
+    # vocab = {"cat", "dog", "mouse"}, |V| = 3
+    # "the" is followed by: "cat" twice, "dog" once. "mouse" never follows "the".
+    tokens = ["the", "cat", "the", "cat", "the", "dog", "a", "mouse"]
+    model = NGramModel(n=2)
+    model.train(tokens)
+    v_size = len(model.vocabulary)
+    assert v_size == 5  # {"the", "cat", "dog", "a", "mouse"}
+
+    # Under MLE, unseen bigram ("the", "mouse") has probability 0.0
+    assert model.mle_prob("the", "mouse") == 0.0
+
+    # With Laplace smoothing (k=1.0):
+    # C("the", "mouse") = 0, C("the") = 3, |V| = 5
+    # P("mouse" | "the") = (0 + 1) / (3 + 1 * 5) = 1 / 8 = 0.125
+    smoothed_p = model.smoothed_prob("the", "mouse", k=1.0)
+    assert smoothed_p == 0.125
+
+    # Check seen follower: C("the", "cat") = 2
+    # P("cat" | "the") = (2 + 1) / (3 + 5) = 3 / 8 = 0.375
+    assert model.smoothed_prob("the", "cat", k=1.0) == 0.375
+
+    # Full distribution over vocabulary sums to 1.0
+    dist = model.get_distribution("the", k=1.0)
+    assert len(dist) == v_size
+    assert pytest.approx(sum(dist.values()), rel=1e-5) == 1.0
+
+    # Test with fractional k (e.g. Lidstone smoothing k=0.5)
+    dist_k05 = model.get_distribution("the", k=0.5)
+    assert pytest.approx(sum(dist_k05.values()), rel=1e-5) == 1.0
+
+    # Test completely unseen context
+    # C("mysterious") = 0
+    # Every word in V should get 1 / |V| = 1 / 5 = 0.2
+    unseen_dist = model.get_distribution("mysterious", k=1.0)
+    for word, prob in unseen_dist.items():
+        assert prob == 1.0 / v_size
+    assert pytest.approx(sum(unseen_dist.values()), rel=1e-5) == 1.0
+
+    # Test milestone_3 helper on full corpus
+    full_model = milestone_3(k=0.5)
+    assert full_model.smoothed_prob("ancient", "dragon", k=0.5) > 0.0
+    # An unseen combination in corpus
+    assert full_model.smoothed_prob("ancient", "cygnus", k=0.5) > 0.0
+
+    # Perplexity is finite
+    perp = full_model.perplexity(["ancient", "dragon", "flew", "away"], k=0.5)
+    assert perp > 0.0 and perp != float("inf")
 
 
 # Milestone 4: Develop a function to generate text by sampling from the model.

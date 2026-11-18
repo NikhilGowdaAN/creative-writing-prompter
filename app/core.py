@@ -297,6 +297,99 @@ class NGramModel:
         items.sort(key=lambda x: (-x[1], x[0]))
         return items
 
+    def smoothed_prob(
+        self,
+        context: tuple[str, ...] | list[str] | str,
+        word: str,
+        k: float = 1.0,
+    ) -> float:
+        """Calculate Add-k (Laplace/Lidstone) smoothed probability P(word | context).
+
+        Formula:
+            P(w | context) = (C(context, w) + k) / (C(context) + k * |V|)
+
+        Handles:
+            - Unseen n-grams (context seen, word not seen in that context)
+            - Unseen contexts (context never seen anywhere in corpus)
+            - Words in or out of the training vocabulary
+        """
+        if k < 0:
+            raise ValueError("Smoothing parameter k must be non-negative.")
+        if k == 0:
+            return self.mle_prob(context, word)
+
+        ctx = self._normalize_context(context)
+        v_size = len(self.vocabulary)
+        if v_size == 0:
+            return 0.0
+
+        word_lower = word.lower()
+        word_count = self.ngram_counts[ctx][word_lower]
+        ctx_count = self.context_counts[ctx]
+
+        if word_lower in self.vocabulary:
+            return (word_count + k) / (ctx_count + k * v_size)
+        else:
+            return k / (ctx_count + k * (v_size + 1))
+
+    # Alias for convenience
+    prob = smoothed_prob
+
+    def get_distribution(
+        self,
+        context: tuple[str, ...] | list[str] | str,
+        k: float = 1.0,
+    ) -> dict[str, float]:
+        """Compute the full smoothed probability distribution over the vocabulary for context."""
+        ctx = self._normalize_context(context)
+        v_size = len(self.vocabulary)
+        if v_size == 0:
+            return {}
+
+        if k == 0:
+            denom = self.context_counts[ctx]
+            if denom == 0:
+                return {w: 1.0 / v_size for w in self.vocabulary}
+            return {
+                w: self.ngram_counts[ctx][w] / denom
+                for w in self.vocabulary
+            }
+
+        ctx_count = self.context_counts[ctx]
+        denom = ctx_count + k * v_size
+        return {
+            w: (self.ngram_counts[ctx][w] + k) / denom
+            for w in self.vocabulary
+        }
+
+    def perplexity(self, tokens: Sequence[str], k: float = 1.0) -> float:
+        """Calculate model perplexity on a test token sequence using add-k smoothing."""
+        if not tokens or not self.vocabulary:
+            return float("inf")
+
+        token_list = [t.lower() for t in tokens]
+        context_len = self.n - 1
+        log_prob_sum = 0.0
+        n_predictions = 0
+
+        if context_len == 0:
+            for tok in token_list:
+                p = self.smoothed_prob((), tok, k=k)
+                log_prob_sum += math.log(max(p, 1e-12))
+                n_predictions += 1
+        else:
+            for i in range(len(token_list) - context_len):
+                ctx = tuple(token_list[i : i + context_len])
+                next_word = token_list[i + context_len]
+                p = self.smoothed_prob(ctx, next_word, k=k)
+                log_prob_sum += math.log(max(p, 1e-12))
+                n_predictions += 1
+
+        if n_predictions == 0:
+            return float("inf")
+
+        return math.exp(-log_prob_sum / n_predictions)
+
 
 # --- Milestone 2: Implement n-gram counting and maximum-likelihood probabilities.
 # Hint: Apply n-gram frequency counting and maximum-likelihood probability calculation.
@@ -321,8 +414,19 @@ def milestone_2(
 
 # --- Milestone 3: Add add-k smoothing to handle unseen n-grams.
 # Hint: Implement add-k smoothing to manage unseen n-grams and improve model robustness.
-def milestone_3():  # TODO(milestone 3)
-    raise NotImplementedError("TODO(milestone 3)")
+def milestone_3(
+    model: NGramModel | None = None,
+    k: float = 1.0,
+    genre: str | None = None,
+) -> NGramModel:
+    """Milestone 3: Add add-k smoothing to handle unseen n-grams.
+
+    Returns the trained NGramModel equipped with add-k smoothing to handle
+    unseen n-grams, unseen contexts, and zero-probability scenarios.
+    """
+    if model is None:
+        model = milestone_2(genre=genre)
+    return model
 
 
 # --- Milestone 4: Develop a function to generate text by sampling from the model.
