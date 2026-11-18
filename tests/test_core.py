@@ -146,9 +146,47 @@ def test_milestone_3():
 
 
 # Milestone 4: Develop a function to generate text by sampling from the model.
-@pytest.mark.skip(reason="remove this line when you start milestone 4")
 def test_milestone_4():
-    raise NotImplementedError("write the test for milestone 4")
+    tokens = ["the", "ancient", "grimoire", "the", "ancient", "grimoire", "the", "ancient", "temple"]
+    model = NGramModel(n=2)
+    model.train(tokens)
+
+    # 1. Test greedy sampling (temperature = 0.0)
+    # After "ancient", "grimoire" occurs twice, "temple" occurs once.
+    # Greedy must deterministically pick "grimoire"
+    greedy_word = model.sample_next_word("ancient", k=1.0, temperature=0.0)
+    assert greedy_word == "grimoire"
+
+    # 2. Test suggest_next_words
+    suggestions = model.suggest_next_words("ancient", num_suggestions=2, k=1.0)
+    assert len(suggestions) == 2
+    assert suggestions[0][0] == "grimoire"
+    assert suggestions[1][0] == "temple"
+    assert suggestions[0][1] > suggestions[1][1]
+
+    # 3. Test reproducible sampling with seed
+    word1 = model.sample_next_word("ancient", k=1.0, temperature=1.0, seed=123)
+    word2 = model.sample_next_word("ancient", k=1.0, temperature=1.0, seed=123)
+    assert word1 == word2
+
+    # 4. Test text generation
+    generated = model.generate(prompt="the ancient", max_words=4, k=1.0, temperature=0.0)
+    words = generated.split()
+    assert words[0:2] == ["the", "ancient"]
+    assert len(words) == 6  # 2 prompt words + 4 generated words
+
+    # 5. Test milestone_4 function with full corpus
+    text = milestone_4(prompt="The ancient", max_words=10, seed=42)
+    assert isinstance(text, str)
+    assert text.lower().startswith("the ancient")
+    gen_words = text.split()
+    assert len(gen_words) == 12  # 2 prompt + 10 generated words
+    assert all(isinstance(w, str) for w in gen_words)
+
+    # 6. Test trigram text generation
+    trigram_text = milestone_4(prompt="The ancient archives", max_words=5, n=3, seed=42)
+    assert trigram_text.lower().startswith("the ancient archives")
+    assert len(trigram_text.split()) == 8
 
 
 # Milestone 5: Create a CLI interface for users to input text and get suggestions.

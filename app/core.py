@@ -390,6 +390,154 @@ class NGramModel:
 
         return math.exp(-log_prob_sum / n_predictions)
 
+    def suggest_next_words(
+        self,
+        context: tuple[str, ...] | list[str] | str,
+        num_suggestions: int = 5,
+        k: float = 1.0,
+        temperature: float = 1.0,
+    ) -> list[tuple[str, float]]:
+        """Return the top N most probable next words given context, with their probabilities.
+
+        Args:
+            context: The preceding words/context.
+            num_suggestions: Number of top suggestions to return.
+            k: Smoothing factor.
+            temperature: Softmax temperature (>0.0 scales probabilities, 1.0 is standard).
+
+        Returns:
+            List of (word, probability) tuples sorted descending by probability.
+        """
+        dist = self.get_distribution(context, k=k)
+        if not dist:
+            return []
+
+        words = list(dist.keys())
+        probs = [dist[w] for w in words]
+
+        if temperature <= 0.0:
+            # Argmax / greedy
+            max_p = max(probs)
+            best_idx = probs.index(max_p)
+            return [(words[best_idx], 1.0)]
+
+        if temperature != 1.0:
+            # Scale logits: log(p) / T
+            logits = [math.log(max(p, 1e-12)) / temperature for p in probs]
+            max_l = max(logits)
+            exp_logits = [math.exp(l - max_l) for l in logits]
+            sum_exp = sum(exp_logits)
+            probs = [el / sum_exp for el in exp_logits]
+
+        paired = list(zip(words, probs))
+        paired.sort(key=lambda x: (-x[1], -self.unigram_counts.get(x[0], 0), x[0]))
+        return paired[:num_suggestions]
+
+    def sample_next_word(
+        self,
+        context: tuple[str, ...] | list[str] | str,
+        k: float = 1.0,
+        temperature: float = 1.0,
+        top_k: int | None = None,
+        seed: int | None = None,
+    ) -> str:
+        """Sample the next word from the model distribution given context.
+
+        Args:
+            context: Preceding words.
+            k: Add-k smoothing factor.
+            temperature: Sampling temperature (0.0 = greedy, <1.0 = more predictable, >1.0 = more creative).
+            top_k: If set, restrict sampling to the top_k most likely words.
+            seed: Optional random seed for reproducible sampling.
+
+        Returns:
+            Sampled word string.
+        """
+        if not self.vocabulary:
+            raise ValueError("Cannot sample from an empty model.")
+
+        rng = random.Random(seed) if seed is not None else random
+
+        if temperature <= 0.0:
+            suggestions = self.suggest_next_words(context, num_suggestions=1, k=k, temperature=1.0)
+            return suggestions[0][0]
+
+        dist = self.get_distribution(context, k=k)
+        words = list(dist.keys())
+        probs = [dist[w] for w in words]
+
+        # Apply temperature scaling
+        if temperature != 1.0:
+            logits = [math.log(max(p, 1e-12)) / temperature for p in probs]
+            max_l = max(logits)
+            exp_logits = [math.exp(l - max_l) for l in logits]
+            sum_exp = sum(exp_logits)
+            probs = [el / sum_exp for el in exp_logits]
+
+        # Apply top-k filtering if requested
+        if top_k is not None and 0 < top_k < len(words):
+            indexed = sorted(
+                enumerate(probs),
+                key=lambda x: (-x[1], -self.unigram_counts.get(words[x[0]], 0)),
+            )[:top_k]
+            top_indices = [idx for idx, _ in indexed]
+            words = [words[idx] for idx in top_indices]
+            raw_top_probs = [probs[idx] for idx in top_indices]
+            sum_top = sum(raw_top_probs)
+            probs = [p / sum_top for p in raw_top_probs]
+
+        chosen = rng.choices(words, weights=probs, k=1)[0]
+        return chosen
+
+    def generate(
+        self,
+        prompt: str,
+        max_words: int = 20,
+        k: float = 1.0,
+        temperature: float = 1.0,
+        top_k: int | None = 20,
+        seed: int | None = None,
+    ) -> str:
+        """Generate continuous text continuation from a prompt by auto-regressive sampling.
+
+        Args:
+            prompt: Seed text string.
+            max_words: Maximum number of new words to generate.
+            k: Smoothing factor.
+            temperature: Sampling temperature.
+            top_k: Top-k filtering limit.
+            seed: Optional seed for reproducibility.
+
+        Returns:
+            Generated text string (prompt + continuation).
+        """
+        prompt_tokens = tokenize(prompt, lowercase=True, strip_punct=True)
+        if not prompt_tokens:
+            prompt_tokens = [random.choice(list(self.vocabulary))]
+
+        generated_tokens = list(prompt_tokens)
+        rng = random.Random(seed) if seed is not None else random
+
+        context_len = self.n - 1
+
+        for _ in range(max_words):
+            if context_len > 0:
+                ctx = tuple(generated_tokens[-context_len:])
+            else:
+                ctx = ()
+
+            step_seed = rng.randint(0, 10**9) if seed is not None else None
+            next_word = self.sample_next_word(
+                ctx,
+                k=k,
+                temperature=temperature,
+                top_k=top_k,
+                seed=step_seed,
+            )
+            generated_tokens.append(next_word)
+
+        return " ".join(generated_tokens)
+
 
 # --- Milestone 2: Implement n-gram counting and maximum-likelihood probabilities.
 # Hint: Apply n-gram frequency counting and maximum-likelihood probability calculation.
@@ -431,8 +579,30 @@ def milestone_3(
 
 # --- Milestone 4: Develop a function to generate text by sampling from the model.
 # Hint: Develop a function for random sampling based on your computed probabilities to generate text.
-def milestone_4():  # TODO(milestone 4)
-    raise NotImplementedError("TODO(milestone 4)")
+def milestone_4(
+    prompt: str = "The ancient",
+    max_words: int = 15,
+    n: int = 2,
+    k: float = 1.0,
+    temperature: float = 1.0,
+    top_k: int | None = 20,
+    seed: int | None = 42,
+    genre: str | None = None,
+) -> str:
+    """Milestone 4: Develop a function to generate text by sampling from the model.
+
+    Generates text by sampling from the computed probabilities of an n-gram model
+    with add-k smoothing, temperature, and top-k filtering.
+    """
+    model = milestone_2(n=n, genre=genre)
+    return model.generate(
+        prompt=prompt,
+        max_words=max_words,
+        k=k,
+        temperature=temperature,
+        top_k=top_k,
+        seed=seed,
+    )
 
 
 # --- Milestone 5: Create a CLI interface for users to input text and get suggestions.
