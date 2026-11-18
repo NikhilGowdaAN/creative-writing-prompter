@@ -607,5 +607,11 @@ def milestone_4(
 
 # --- Milestone 5: Create a CLI interface for users to input text and get suggestions.
 # Hint: Utilize command-line argument parsing and user input handling to build the CLI.
-def milestone_5():  # TODO(milestone 5)
-    raise NotImplementedError("TODO(milestone 5)")
+def milestone_5(argv: list[str] | None = None) -> None:
+    """Milestone 5: Create a CLI interface for users to input text and get suggestions.
+
+    Launches the CLI parser and command router to provide context-aware next-word
+    suggestions, text generation, or interactive story prompts.
+    """
+    from app.cli import main
+    main(argv if argv is not None else ["suggest", "The ancient", "--top", "3"])

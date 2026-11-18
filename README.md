@@ -22,7 +22,7 @@ Tick these off as you go, and commit after each one.
       Hint: Implement add-k smoothing to manage unseen n-grams and improve model robustness.
 - [x] **4. Develop a function to generate text by sampling from the model.**  
       Hint: Develop a function for random sampling based on your computed probabilities to generate text.
-- [ ] **5. Create a CLI interface for users to input text and get suggestions.**  
+- [x] **5. Create a CLI interface for users to input text and get suggestions.**  
       Hint: Utilize command-line argument parsing and user input handling to build the CLI.
 
 ## Run it
@@ -47,6 +47,28 @@ reaches GitHub, treat it as leaked and make a new one.
 
 ## Stretch ideas
 
-- Allow users to specify the n-gram size (e.g., bigram, trigram) at runtime for different prediction behaviors.
-- Implement a 'temperature' parameter for text generation to control the randomness of suggestions, making them more or less predictable.
-- Display multiple next-word suggestions with their probabilities instead of just one, giving users more options.
+- Allow users to specify the n-gram size (e.g., bigram, trigram) at runtime for different prediction behaviors (Supported via `-n / --ngram`).
+- Implement a 'temperature' parameter for text generation to control the randomness of suggestions, making them more or less predictable (Supported via `-t / --temperature`).
+- Display multiple next-word suggestions with their probabilities instead of just one, giving users more options (Supported via `--top`).
+
+## CLI Usage
+
+```bash
+# Check plumbing
+python -m app.cli hello
+
+# Get context-aware next-word suggestions (with probabilities and visual bars)
+python -m app.cli suggest "The ancient" --genre fantasy --top 5
+
+# Customize n-gram order (bigram, trigram), smoothing (k), and temperature
+python -m app.cli suggest "Commander Varek" --genre scifi -n 3 -k 0.5 -t 0.8
+
+# Generate story text to overcome writer's block
+python -m app.cli generate "Maya stepped onto" --genre adventure --length 25
+
+# Launch an interactive writing session with live suggestions
+python -m app.cli interactive --genre mystery
+
+# View corpus statistics and available genres
+python -m app.cli corpus
+```

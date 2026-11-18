@@ -190,6 +190,45 @@ def test_milestone_4():
 
 
 # Milestone 5: Create a CLI interface for users to input text and get suggestions.
-@pytest.mark.skip(reason="remove this line when you start milestone 5")
-def test_milestone_5():
-    raise NotImplementedError("write the test for milestone 5")
+def test_milestone_5(capsys):
+    # 1. Test suggest command via milestone_5
+    milestone_5(["suggest", "the ancient", "--top", "3", "--genre", "fantasy"])
+    out = capsys.readouterr().out
+    assert "NEXT-WORD SUGGESTIONS" in out
+    assert "the ancient" in out
+    assert "[1]" in out
+
+    # 2. Test generate command
+    milestone_5(["generate", "Commander Varek", "--length", "6", "--genre", "scifi", "--seed", "42"])
+    out = capsys.readouterr().out
+    assert "STORY INSPIRATION GENERATOR" in out
+    assert "commandervarek" in out.lower() or "commander varek" in out.lower()
+
+    # 3. Test corpus stats command
+    milestone_5(["corpus"])
+    out = capsys.readouterr().out
+    assert "GENRE CORPUS DETAILS" in out
+    assert "fantasy" in out
+    assert "scifi" in out
+
+    # 4. Test default milestone_5 invocation
+    milestone_5()
+    out = capsys.readouterr().out
+    assert "NEXT-WORD SUGGESTIONS" in out
+
+    # 5. Test save flag with store
+    milestone_5(["suggest", "the dragon", "--top", "3", "--save"])
+    out = capsys.readouterr().out
+    assert "Saved suggestions to session history" in out
+
+
+def test_cli_interactive(monkeypatch, capsys):
+    # Simulate user typing "1" (select first suggestion) then "/quit"
+    inputs = iter(["1", "/quit"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(inputs))
+
+    milestone_5(["interactive", "--genre", "fantasy"])
+    out = capsys.readouterr().out
+    assert "CREATIVE WRITING ASSISTANT" in out
+    assert "Ending session" in out
+    assert "Keep writing!" in out
